@@ -13,18 +13,29 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   bool _showNavbar = false;
+  double _lastScrollOffset = 0;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(() {
-      setState(() {
-        _showNavbar = _scrollController.offset > 100;
-      });
-    });
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final currentOffset = _scrollController.offset;
+
+    // Smooth navbar appearance
+    if (currentOffset > 100 && !_showNavbar) {
+      setState(() => _showNavbar = true);
+    } else if (currentOffset <= 100 && _showNavbar) {
+      setState(() => _showNavbar = false);
+    }
+
+    _lastScrollOffset = currentOffset;
   }
 
   @override
@@ -35,34 +46,107 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _launchUrl(String url) async {
     final Uri uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw Exception('Could not launch $url');
+    try {
+      // Use platformDefault for email to open in email app
+      final mode = url.startsWith('mailto:')
+          ? LaunchMode.platformDefault
+          : LaunchMode.externalApplication;
+
+      if (!await launchUrl(uri, mode: mode)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Could not open: ${url.startsWith('mailto:') ? 'Email app' : url}',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening link: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
+  }
+
+  void _scrollToTop() {
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.easeInOutCubic,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0F1A),
       body: Stack(
         children: [
-          // Main Content
-          SingleChildScrollView(
-            controller: _scrollController,
-            child: Column(
-              children: [
-                _buildHeroSection(context),
-                _buildStatsSection(context),
-                _buildWhatWeDoSection(context),
-                _buildWhyTraceAgroSection(context),
-                _buildTrustSection(context),
-                _buildCTASection(context),
-                _buildFooter(context),
-              ],
+          // Main Content with improved scrolling physics
+          ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(
+              scrollbars: false,
+              physics: const BouncingScrollPhysics(),
+              dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
+            ),
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              child: Column(
+                children: [
+                  _buildHeroSection(context),
+                  _buildStatsSection(context),
+                  _buildWhatWeDoSection(context),
+                  _buildWhyTraceAgroSection(context),
+                  _buildTrustSection(context),
+                  _buildCTASection(context),
+                  _buildFooter(context),
+                ],
+              ),
             ),
           ),
 
-          // Floating Navbar
-          if (_showNavbar) _buildFloatingNavbar(context),
+          // Floating Navbar with smooth transition
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            top: _showNavbar ? 20 : -100,
+            left: 20,
+            right: 20,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 300),
+              opacity: _showNavbar ? 1.0 : 0.0,
+              child: _buildFloatingNavbar(context),
+            ),
+          ),
+
+          // Scroll to top button
+          if (_showNavbar)
+            Positioned(
+              bottom: 40,
+              right: 40,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity: _showNavbar ? 1.0 : 0.0,
+                child: FloatingActionButton(
+                  onPressed: _scrollToTop,
+                  backgroundColor: const Color(0xFF22C55E),
+                  child: const Icon(Icons.arrow_upward, color: Colors.white),
+                ).animate().fadeIn().scale(),
+              ),
+            ),
         ],
       ),
     );
@@ -70,31 +154,29 @@ class _HomePageState extends State<HomePage> {
 
   // Floating Navbar
   Widget _buildFloatingNavbar(BuildContext context) {
-    return Positioned(
-      top: 20,
-      left: 20,
-      right: 20,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A2332).withOpacity(0.95),
-          borderRadius: BorderRadius.circular(50),
-          border: Border.all(
-            color: const Color(0xFF22C55E).withOpacity(0.3),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF22C55E).withOpacity(0.1),
-              blurRadius: 20,
-              spreadRadius: 2,
-            ),
-          ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2332).withOpacity(0.95),
+        borderRadius: BorderRadius.circular(50),
+        border: Border.all(
+          color: const Color(0xFF22C55E).withOpacity(0.3),
+          width: 1,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF22C55E).withOpacity(0.2),
+            blurRadius: 20,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          GestureDetector(
+            onTap: _scrollToTop,
+            child: Text(
               'TraceAgro',
               style: GoogleFonts.poppins(
                 fontSize: 20,
@@ -102,37 +184,46 @@ class _HomePageState extends State<HomePage> {
                 color: const Color(0xFF22C55E),
               ),
             ),
-            Row(
-              children: [
-                _buildNavButton('Investors', () {
-                  _launchUrl(
-                    'mailto:ikechukwu@traceagro.com?subject=Investor Enquiry',
-                  );
-                }),
-                const SizedBox(width: 16),
-                _buildNavButton('Buyers', () {
-                  _launchUrl(
-                    'mailto:ikechukwu@traceagro.com?subject=Buyer Partnership',
-                  );
-                }),
-                const SizedBox(width: 16),
-                _buildNavButton('Contact', () {
-                  _launchUrl('mailto:ikechukwu@traceagro.com');
-                }),
-              ],
-            ),
-          ],
-        ),
-      ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.5, end: 0),
+          ),
+          Row(
+            children: [
+              _buildNavButton('Investors', () {
+                _launchUrl(
+                  'mailto:frikdensil@gmail.com?subject=Investor%20Enquiry&body=Hello%20TraceAgro%20Team,',
+                );
+              }),
+              const SizedBox(width: 16),
+              _buildNavButton('Buyers', () {
+                _launchUrl(
+                  'mailto:frikdensil@gmail.com?subject=Buyer%20Partnership&body=Hello%20TraceAgro%20Team,',
+                );
+              }),
+              const SizedBox(width: 16),
+              _buildNavButton('Contact', () {
+                _launchUrl(
+                  'mailto:frikdensil@gmail.com?subject=General%20Inquiry&body=Hello%20TraceAgro%20Team,',
+                );
+              }),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildNavButton(String text, VoidCallback onPressed) {
     return TextButton(
       onPressed: onPressed,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      ),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white70, fontSize: 14),
+        style: GoogleFonts.inter(
+          color: Colors.white70,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
@@ -247,7 +338,7 @@ class _HomePageState extends State<HomePage> {
                     _buildGlowingButton(
                           'Investor / Grant Enquiry',
                           () => _launchUrl(
-                            'mailto:ikechukwu@traceagro.com?subject=Investor Enquiry',
+                            'mailto:frikdensil@gmail.com?subject=Investor%20Enquiry&body=Hello%20TraceAgro%20Team,%0D%0A%0D%0AI%20am%20interested%20in%20learning%20more%20about%20investment%20opportunities.',
                           ),
                           isPrimary: true,
                         )
@@ -261,7 +352,7 @@ class _HomePageState extends State<HomePage> {
                     _buildGlowingButton(
                           'Become a Buyer / Partner',
                           () => _launchUrl(
-                            'mailto:ikechukwu@traceagro.com?subject=Buyer Partnership',
+                            'mailto:frikdensil@gmail.com?subject=Buyer%20Partnership&body=Hello%20TraceAgro%20Team,%0D%0A%0D%0AI%20am%20interested%20in%20becoming%20a%20buyer%20or%20partner.',
                           ),
                           isPrimary: false,
                         )
@@ -275,7 +366,7 @@ class _HomePageState extends State<HomePage> {
                     _buildGlowingButton(
                           'Join as Farmer / Aggregator',
                           () => _launchUrl(
-                            'mailto:ikechukwu@traceagro.com?subject=Farmer Registration',
+                            'mailto:frikdensil@gmail.com?subject=Farmer%20Registration&body=Hello%20TraceAgro%20Team,%0D%0A%0D%0AI%20am%20interested%20in%20joining%20as%20a%20farmer%20or%20aggregator.',
                           ),
                           isPrimary: false,
                         )
@@ -297,14 +388,16 @@ class _HomePageState extends State<HomePage> {
                       'LinkedIn',
                       Icons.person,
                       () => _launchUrl(
-                        'https://linkedin.com/in/ikechukwu-o-4242ba31',
+                        'https://www.linkedin.com/in/ikechukwu-o-4242ba31',
                       ),
                     ),
                     const SizedBox(width: 16),
                     _buildSocialButton(
                       'Email',
                       Icons.email,
-                      () => _launchUrl('mailto:ikechukwu@traceagro.com'),
+                      () => _launchUrl(
+                        'mailto:frikdensil@gmail.com?subject=Hello&body=Hi%20TraceAgro%20Team,',
+                      ),
                     ),
                   ],
                 ).animate().fadeIn(duration: 800.ms, delay: 900.ms),
@@ -316,7 +409,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Glowing Button Widget - FIXED
+  // Glowing Button Widget
   Widget _buildGlowingButton(
     String text,
     VoidCallback onPressed, {
@@ -384,7 +477,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(width: 8),
             Text(
               label,
-              style: const TextStyle(
+              style: GoogleFonts.inter(
                 color: Colors.white,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -828,10 +921,13 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 24),
           ElevatedButton(
-            onPressed: () => _launchUrl('mailto:ikechukwu@traceagro.com'),
+            onPressed: () => _launchUrl(
+              'mailto:frikdensil@gmail.com?subject=General%20Inquiry&body=Hello%20TraceAgro%20Team,',
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 20),
+              elevation: 5,
             ),
             child: Text(
               'Contact Us',
@@ -863,15 +959,18 @@ class _HomePageState extends State<HomePage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               TextButton(
-                onPressed: () =>
-                    _launchUrl('https://linkedin.com/in/ikechukwu-o-4242ba31'),
+                onPressed: () => _launchUrl(
+                  'https://www.linkedin.com/in/ikechukwu-o-4242ba31',
+                ),
                 child: Text(
                   'LinkedIn',
                   style: GoogleFonts.inter(color: Colors.white70),
                 ),
               ),
               TextButton(
-                onPressed: () => _launchUrl('mailto:ikechukwu@traceagro.com'),
+                onPressed: () => _launchUrl(
+                  'mailto:frikdensil@gmail.com?subject=Hello&body=Hi%20TraceAgro%20Team,',
+                ),
                 child: Text(
                   'Email',
                   style: GoogleFonts.inter(color: Colors.white70),
